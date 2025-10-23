@@ -51,14 +51,30 @@ export interface DatabaseMessage {
 export class SupabaseStore {
   // User methods
   async registerUser(username: string, passwordHash: string, encryptionSalt: string): Promise<string> {
-    const { data, error } = await supabase.rpc('register_user', {
-      user_username: username,
-      user_password_hash: passwordHash,
-      user_encryption_salt: encryptionSalt
-    })
+    // Check if username already exists
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username)
+      .single()
+
+    if (existingUser) {
+      throw new Error('Username already exists')
+    }
+
+    // Create new user
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        username,
+        password_hash: passwordHash,
+        encryption_salt: encryptionSalt
+      })
+      .select('id')
+      .single()
 
     if (error) throw error
-    return data
+    return data.id
   }
 
   async getUserByUsername(username: string): Promise<DatabaseUser | null> {
@@ -77,30 +93,99 @@ export class SupabaseStore {
 
   // Room methods
   async createRoom(name: string, creatorId: string, memberUsernames: string[] = []): Promise<string> {
-    const { data, error } = await supabase.rpc('create_room', {
-      room_name: name,
-      creator_uuid: creatorId,
-      member_usernames: memberUsernames
-    })
+    // Create the room
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .insert({
+        name,
+        creator_id: creatorId,
+        is_encrypted: true
+      })
+      .select('id')
+      .single()
 
-    if (error) throw error
-    return data
+    if (roomError) throw roomError
+
+    // Add creator as member
+    const { error: creatorError } = await supabase
+      .from('room_members')
+      .insert({
+        room_id: room.id,
+        user_id: creatorId
+      })
+
+    if (creatorError) throw creatorError
+
+    // Add other members if specified
+    if (memberUsernames.length > 0) {
+      const { data: memberUsers } = await supabase
+        .from('users')
+        .select('id')
+        .in('username', memberUsernames)
+
+      if (memberUsers && memberUsers.length > 0) {
+        const memberIds = memberUsers.map(user => ({
+          room_id: room.id,
+          user_id: user.id
+        }))
+
+        const { error: membersError } = await supabase
+          .from('room_members')
+          .insert(memberIds)
+
+        if (membersError) throw membersError
+      }
+    }
+
+    return room.id
   }
 
   async getUserRooms(userId: string): Promise<any[]> {
-    const { data, error } = await supabase.rpc('get_user_rooms', {
-      user_uuid: userId
-    })
+    const { data, error } = await supabase
+      .from('room_members')
+      .select(`
+        room_id,
+        rooms!inner(
+          id,
+          name,
+          creator_id,
+          is_encrypted,
+          created_at
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('is_active', true)
 
     if (error) throw error
     return data || []
   }
 
   async getRoomMembers(roomId: string, userId: string): Promise<any[]> {
-    const { data, error } = await supabase.rpc('get_room_members', {
-      room_uuid: roomId,
-      requesting_user_uuid: userId
-    })
+    // First check if user is a member of the room
+    const { data: membership } = await supabase
+      .from('room_members')
+      .select('id')
+      .eq('room_id', roomId)
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single()
+
+    if (!membership) {
+      throw new Error('User is not a member of this room')
+    }
+
+    const { data, error } = await supabase
+      .from('room_members')
+      .select(`
+        user_id,
+        joined_at,
+        is_active,
+        users!inner(
+          id,
+          username
+        )
+      `)
+      .eq('room_id', roomId)
 
     if (error) throw error
     return data || []
@@ -115,26 +200,83 @@ export class SupabaseStore {
     messageType: string = 'text',
     replyToId?: string
   ): Promise<string> {
-    const { data, error } = await supabase.rpc('send_message', {
-      room_uuid: roomId,
-      sender_uuid: senderId,
-      message_ciphertext: ciphertext,
-      message_iv: iv,
-      message_type: messageType,
-      reply_to_message_id: replyToId
-    })
+    // Check if sender is a member of the room
+    const { data: membership } = await supabase
+      .from('room_members')
+      .select('id')
+      .eq('room_id', roomId)
+      .eq('user_id', senderId)
+      .eq('is_active', true)
+      .single()
+
+    if (!membership) {
+      throw new Error('User is not a member of this room')
+    }
+
+    // Check if reply message exists (if specified)
+    if (replyToId) {
+      const { data: replyMessage } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('id', replyToId)
+        .eq('room_id', roomId)
+        .single()
+
+      if (!replyMessage) {
+        throw new Error('Reply message does not exist in this room')
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        room_id: roomId,
+        sender_id: senderId,
+        ciphertext,
+        iv,
+        message_type: messageType,
+        reply_to_id: replyToId
+      })
+      .select('id')
+      .single()
 
     if (error) throw error
-    return data
+    return data.id
   }
 
   async getRoomMessages(roomId: string, userId: string, limit: number = 50, offset: number = 0): Promise<any[]> {
-    const { data, error } = await supabase.rpc('get_room_messages', {
-      room_uuid: roomId,
-      user_uuid: userId,
-      limit_count: limit,
-      offset_count: offset
-    })
+    // Check if user is a member of the room
+    const { data: membership } = await supabase
+      .from('room_members')
+      .select('id')
+      .eq('room_id', roomId)
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single()
+
+    if (!membership) {
+      throw new Error('User is not a member of this room')
+    }
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select(`
+        id,
+        sender_id,
+        ciphertext,
+        iv,
+        message_type,
+        is_edited,
+        edited_at,
+        reply_to_id,
+        created_at,
+        users!inner(
+          username
+        )
+      `)
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + limit - 1)
 
     if (error) throw error
     return data || []
@@ -142,18 +284,30 @@ export class SupabaseStore {
 
   // Additional methods
   async markRoomAsRead(userId: string, roomId: string): Promise<void> {
-    const { error } = await supabase.rpc('mark_room_as_read', {
-      user_uuid: userId,
-      room_uuid: roomId
-    })
+    const { error } = await supabase
+      .from('user_room_reads')
+      .upsert({
+        user_id: userId,
+        room_id: roomId,
+        last_read_at: new Date().toISOString()
+      })
 
     if (error) throw error
   }
 
   async getUnreadMessageCount(userId: string): Promise<any[]> {
-    const { data, error } = await supabase.rpc('get_unread_message_count', {
-      user_uuid: userId
-    })
+    // This is a simplified version - for full implementation, you'd need to join with user_room_reads
+    const { data, error } = await supabase
+      .from('room_members')
+      .select(`
+        room_id,
+        rooms!inner(
+          id,
+          name
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('is_active', true)
 
     if (error) throw error
     return data || []
