@@ -125,6 +125,40 @@ export class SupabaseStore {
     return data
   }
 
+  // Debug function to list all users
+  async getAllUsers(): Promise<DatabaseUser[]> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('username')
+
+    if (error) throw error
+    return data || []
+  }
+
+  // Debug function to list all room members
+  async getAllRoomMembers(): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('room_members')
+      .select(`
+        room_id,
+        user_id,
+        joined_at,
+        rooms!inner(
+          id,
+          name
+        ),
+        users!inner(
+          id,
+          username
+        )
+      `)
+      .order('joined_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+  }
+
   // Room methods
   async createRoom(name: string, creatorId: string, memberUsernames: string[] = []): Promise<string> {
     // Create the room
@@ -152,10 +186,19 @@ export class SupabaseStore {
 
     // Add other members if specified
     if (memberUsernames.length > 0) {
-      const { data: memberUsers } = await supabase
+      console.log('Adding members to room:', memberUsernames)
+      
+      const { data: memberUsers, error: memberUsersError } = await supabase
         .from('users')
-        .select('id')
+        .select('id, username')
         .in('username', memberUsernames)
+
+      if (memberUsersError) {
+        console.error('Error fetching member users:', memberUsersError)
+        throw memberUsersError
+      }
+
+      console.log('Found member users:', memberUsers)
 
       if (memberUsers && memberUsers.length > 0) {
         const memberIds = memberUsers.map(user => ({
@@ -163,11 +206,20 @@ export class SupabaseStore {
           user_id: user.id
         }))
 
+        console.log('Inserting room members:', memberIds)
+
         const { error: membersError } = await supabase
           .from('room_members')
           .insert(memberIds)
 
-        if (membersError) throw membersError
+        if (membersError) {
+          console.error('Error inserting room members:', membersError)
+          throw membersError
+        }
+
+        console.log('Successfully added members to room')
+      } else {
+        console.log('No valid users found for usernames:', memberUsernames)
       }
     }
 
@@ -175,6 +227,8 @@ export class SupabaseStore {
   }
 
   async getUserRooms(userId: string): Promise<any[]> {
+    console.log('Getting rooms for user ID:', userId)
+    
     const { data, error } = await supabase
       .from('room_members')
       .select(`
@@ -189,7 +243,12 @@ export class SupabaseStore {
       `)
       .eq('user_id', userId)
 
-    if (error) throw error
+    if (error) {
+      console.error('Error fetching user rooms:', error)
+      throw error
+    }
+
+    console.log('Found rooms for user:', data)
     return data || []
   }
 

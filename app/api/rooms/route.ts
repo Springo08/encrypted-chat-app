@@ -15,13 +15,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
+    console.log('Fetching rooms for user:', username, 'with ID:', user.id)
     const rooms = await supabaseStore.getUserRooms(user.id)
+    console.log('Raw rooms data:', rooms)
     
     // Transform data to match frontend expectations
     const transformedRooms = await Promise.all(rooms.map(async (room) => {
       // Get room members for each room
       const members = await supabaseStore.getRoomMembers(room.rooms.id, user.id)
       const participantUsernames = members.map(member => member.users.username)
+      
+      console.log(`Room ${room.rooms.name} has members:`, participantUsernames)
       
       return {
         id: room.rooms.id,
@@ -33,6 +37,8 @@ export async function GET(request: NextRequest) {
         unreadCount: 0 // Will be populated when needed
       }
     }))
+
+    console.log('Transformed rooms:', transformedRooms)
 
     return NextResponse.json({ rooms: transformedRooms })
   } catch (error) {
