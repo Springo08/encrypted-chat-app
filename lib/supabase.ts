@@ -49,32 +49,66 @@ export interface DatabaseMessage {
 
 // Supabase store implementation
 export class SupabaseStore {
+  // Check if database is properly set up
+  async checkDatabaseSetup(): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .select('id')
+        .limit(1)
+      return !error
+    } catch {
+      return false
+    }
+  }
   // User methods
   async registerUser(username: string, passwordHash: string, encryptionSalt: string): Promise<string> {
-    // Check if username already exists
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('username', username)
-      .single()
+    try {
+      // First check if database is set up
+      const isDatabaseReady = await this.checkDatabaseSetup()
+      if (!isDatabaseReady) {
+        throw new Error('Database not properly configured. Please set up the database tables first.')
+      }
 
-    if (existingUser) {
-      throw new Error('Username already exists')
+      // Check if username already exists
+      const { data: existingUser, error: checkError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', username)
+        .single()
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking existing user:', checkError)
+        throw new Error(`Database error: ${checkError.message}`)
+      }
+
+      if (existingUser) {
+        throw new Error('Username already exists')
+      }
+
+      // Create new user
+      const { data, error } = await supabase
+        .from('users')
+        .insert({
+          username,
+          password_hash: passwordHash,
+          encryption_salt: encryptionSalt
+        })
+        .select('id')
+        .single()
+
+      if (error) {
+        console.error('Registration error:', error)
+        if (error.code === '42P01') {
+          throw new Error('Database table "users" does not exist. Please set up the database first.')
+        }
+        throw new Error(`Registration failed: ${error.message}`)
+      }
+      return data.id
+    } catch (error: any) {
+      console.error('Registration error:', error)
+      throw new Error(`Registration failed: ${error.message}`)
     }
-
-    // Create new user
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        username,
-        password_hash: passwordHash,
-        encryption_salt: encryptionSalt
-      })
-      .select('id')
-      .single()
-
-    if (error) throw error
-    return data.id
   }
 
   async getUserByUsername(username: string): Promise<DatabaseUser | null> {

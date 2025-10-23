@@ -67,6 +67,11 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
       onLogin(user.username, encryptionKey)
     } catch (error: any) {
+      if (error.message.includes('Database table') || error.message.includes('Database not properly configured')) {
+        // Redirect to setup page if database is not configured
+        window.location.href = '/setup'
+        return
+      }
       setError(error.message)
     } finally {
       setIsLoading(false)
