@@ -33,6 +33,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Username already exists" }, { status: 409 })
     }
     
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 })
+    // Return detailed error for debugging
+    return NextResponse.json({ 
+      error: "Registration failed", 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, { status: 500 })
   }
 }
