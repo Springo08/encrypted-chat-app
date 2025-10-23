@@ -188,7 +188,6 @@ export class SupabaseStore {
         )
       `)
       .eq('user_id', userId)
-      .eq('is_active', true)
 
     if (error) throw error
     return data || []
@@ -201,7 +200,6 @@ export class SupabaseStore {
       .select('id')
       .eq('room_id', roomId)
       .eq('user_id', userId)
-      .eq('is_active', true)
       .single()
 
     if (!membership) {
@@ -213,7 +211,6 @@ export class SupabaseStore {
       .select(`
         user_id,
         joined_at,
-        is_active,
         users!inner(
           id,
           username
@@ -240,7 +237,6 @@ export class SupabaseStore {
       .select('id')
       .eq('room_id', roomId)
       .eq('user_id', senderId)
-      .eq('is_active', true)
       .single()
 
     if (!membership) {
@@ -285,7 +281,6 @@ export class SupabaseStore {
       .select('id')
       .eq('room_id', roomId)
       .eq('user_id', userId)
-      .eq('is_active', true)
       .single()
 
     if (!membership) {
@@ -341,7 +336,6 @@ export class SupabaseStore {
         )
       `)
       .eq('user_id', userId)
-      .eq('is_active', true)
 
     if (error) throw error
     return data || []

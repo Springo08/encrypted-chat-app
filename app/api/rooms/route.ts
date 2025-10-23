@@ -18,18 +18,20 @@ export async function GET(request: NextRequest) {
     const rooms = await supabaseStore.getUserRooms(user.id)
     
     // Transform data to match frontend expectations
-    const transformedRooms = rooms.map(room => ({
-      id: room.room_id,
-      name: room.room_name,
-      participants: [], // Will be populated when needed
-      isEncrypted: room.is_encrypted,
-      createdAt: room.created_at,
-      latestMessage: room.latest_message_ciphertext ? {
-        ciphertext: room.latest_message_ciphertext,
-        iv: room.latest_message_iv,
-        timestamp: new Date(room.latest_message_time).getTime()
-      } : null,
-      unreadCount: room.unread_count
+    const transformedRooms = await Promise.all(rooms.map(async (room) => {
+      // Get room members for each room
+      const members = await supabaseStore.getRoomMembers(room.rooms.id, user.id)
+      const participantUsernames = members.map(member => member.users.username)
+      
+      return {
+        id: room.rooms.id,
+        name: room.rooms.name,
+        participants: participantUsernames,
+        isEncrypted: room.rooms.is_encrypted,
+        createdAt: room.rooms.created_at,
+        latestMessage: null, // Will be populated when needed
+        unreadCount: 0 // Will be populated when needed
+      }
     }))
 
     return NextResponse.json({ rooms: transformedRooms })
