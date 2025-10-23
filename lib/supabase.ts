@@ -1,8 +1,8 @@
 // Supabase configuration for encrypted chat app
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://oqhxwjauhjbepaoisfus.supabase.co'
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xaHh3amF1aGpiZXBhb2lzZnVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMTE5MDMsImV4cCI6MjA3Njc4NzkwM30.Ozod49EedtRS5G6RJCGpHEToFdv-_DojH-Be723M4zg'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://oqhxwjauhjbepaoisfus.supabase.co'
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xaHh3amF1aGpiZXBhb2lzZnVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMTE5MDMsImV4cCI6MjA3Njc4NzkwM30.Ozod49EedtRS5G6RJCGpHEToFdv-_DojH-Be723M4zg'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
